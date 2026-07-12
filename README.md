@@ -1,6 +1,6 @@
 # 西行寻珍：师徒四人的长安冒险
 
-一个基于 Three.js、React 与 vinext 的第三人称浏览器游戏。玩家可以选择玄奘、孙悟空、猪八戒或沙悟净，在低多边形唐长安城中寻找十二件真实博物馆藏品的光影投影。
+一个基于 Three.js、React 与 Next.js 的第三人称浏览器游戏。玩家可以选择玄奘、孙悟空、猪八戒或沙悟净，在低多边形唐长安城中寻找十二件真实博物馆藏品的光影投影。
 
 ## 玩法
 
@@ -35,7 +35,6 @@ npm test
 - `app/`：游戏界面、Three.js 场景、角色与玩法逻辑。
 - `public/models/tang-changan-v5.glb`：Draco 压缩的长安城网页模型。
 - `public/draco/`：本地 Draco 解码器。
-- `worker/`：vinext 的 Cloudflare Worker 运行入口。
 - `tests/`：服务器渲染与关键游戏能力检查。
 
 藏品图像及馆藏资料来自大都会艺术博物馆开放馆藏。角色与场景采用风格化低多边形表达。
