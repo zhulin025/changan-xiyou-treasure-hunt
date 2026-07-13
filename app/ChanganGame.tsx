@@ -10,7 +10,7 @@ import {
   computeBoundsTree,
   disposeBoundsTree,
 } from "three-mesh-bvh";
-import { createXiyouWorld, type PilgrimId } from "./xiyouScene";
+import { createXiyouWorld, type PartyPose, type PilgrimId } from "./xiyouScene";
 
 type BVHGeometry = THREE.BufferGeometry & {
   computeBoundsTree: typeof computeBoundsTree;
@@ -235,7 +235,7 @@ export default function ChanganGame() {
   const [runSeed, setRunSeed] = useState(DEFAULT_SEED);
   const [placementIndices, setPlacementIndices] = useState(() => shuffledAnchorIndices(DEFAULT_SEED));
   const [activePilgrim, setActivePilgrim] = useState<PilgrimId>("wukong");
-  const [partyMode, setPartyMode] = useState<"follow" | "explore">("follow");
+  const [partyMode, setPartyMode] = useState<"follow" | "explore">("explore");
   const [mobileHudOpen, setMobileHudOpen] = useState(false);
   const changeViewModeRef = useRef<((mode: "walk" | "fly" | "panoramic") => void) | null>(null);
   const activeArtifactRef = useRef(0);
@@ -245,7 +245,10 @@ export default function ChanganGame() {
   const placementIndicesRef = useRef(placementIndices);
   const runSeedRef = useRef(runSeed);
   const activePilgrimRef = useRef<PilgrimId>("wukong");
-  const partyModeRef = useRef<"follow" | "explore">("follow");
+  const partyModeRef = useRef<"follow" | "explore">("explore");
+  const readyRef = useRef(false);
+  const startedRef = useRef(false);
+  const briefOpenRef = useRef(false);
   const resolvedPositionsRef = useRef<[number, number][]>(
     placementIndices.map((anchorIndex) => [...TREASURE_ANCHORS[anchorIndex].position]),
   );
@@ -283,6 +286,9 @@ export default function ChanganGame() {
   useEffect(() => { activeArtifactRef.current = activeArtifact; }, [activeArtifact]);
   useEffect(() => { activePilgrimRef.current = activePilgrim; }, [activePilgrim]);
   useEffect(() => { partyModeRef.current = partyMode; }, [partyMode]);
+  useEffect(() => { readyRef.current = ready; }, [ready]);
+  useEffect(() => { startedRef.current = started; }, [started]);
+  useEffect(() => { briefOpenRef.current = briefOpen; }, [briefOpen]);
   useEffect(() => {
     runSeedRef.current = runSeed;
     placementIndicesRef.current = placementIndices;
@@ -403,6 +409,15 @@ export default function ChanganGame() {
 
     const xiyouWorld = createXiyouWorld();
     scene.add(xiyouWorld.root);
+    const wanderStates = PILGRIMS.map((pilgrim, index) => {
+      const start = new THREE.Vector3((index - 1.5) * 8, 0, 1372 + index * 3);
+      return {
+        id: pilgrim.id, position: start, yaw: Math.PI, moving: false, target: (index * 3) % ARTIFACTS.length,
+        bestDistance: Infinity, stuckTime: 0, breadcrumbTimer: 0, breadcrumbs: [start.clone()],
+        escapePath: [] as THREE.Vector3[], waypoints: [] as THREE.Vector3[],
+      };
+    });
+    let previousActivePilgrim: PilgrimId = activePilgrimRef.current;
 
     const colliders: THREE.Mesh[] = [];
     const artifactMarkers = ARTIFACTS.map((_, index) => {
@@ -539,6 +554,24 @@ export default function ChanganGame() {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) {
         event.preventDefault();
       }
+      if (event.code === "Space" && !startedRef.current && readyRef.current) {
+        event.preventDefault();
+        startedRef.current = true;
+        briefOpenRef.current = true;
+        setStarted(true);
+        setBriefOpen(true);
+        const lockRequest = renderer.domElement.requestPointerLock?.();
+        if (lockRequest && "catch" in lockRequest) lockRequest.catch(() => {});
+        return;
+      }
+      if (event.code === "Space" && briefOpenRef.current) {
+        event.preventDefault();
+        briefOpenRef.current = false;
+        setBriefOpen(false);
+        const lockRequest = renderer.domElement.requestPointerLock?.();
+        if (lockRequest && "catch" in lockRequest) lockRequest.catch(() => {});
+        return;
+      }
       if (event.code === "KeyV") {
         if (viewModeRef.current === "panoramic") {
           changeViewMode("walk");
@@ -630,6 +663,45 @@ export default function ChanganGame() {
       return raycaster.intersectObjects(colliders, false).length === 0;
     };
 
+    const canWanderStep = (position: THREE.Vector3, direction: THREE.Vector3, step: number) => {
+      if (!colliders.length) return true;
+      const origin = position.clone(); origin.y = 2.2;
+      raycaster.set(origin, direction); raycaster.near = 0; raycaster.far = step + 2.5;
+      return raycaster.intersectObjects(colliders, false).length === 0;
+    };
+
+    const buildWanderRoute = (state: (typeof wanderStates)[number]) => {
+      const target = resolvedPositionsRef.current[state.target];
+      if (!target) return;
+      const targetPoint = new THREE.Vector3(target[0], 0, target[1]);
+      if (state.position.z > 985 && targetPoint.z < 875) {
+        state.waypoints = [new THREE.Vector3(0, 0, 1040), new THREE.Vector3(0, 0, 930), new THREE.Vector3(0, 0, 820), targetPoint];
+      } else if (state.position.z < 875 && targetPoint.z > 985) {
+        state.waypoints = [new THREE.Vector3(0, 0, 820), new THREE.Vector3(0, 0, 930), new THREE.Vector3(0, 0, 1040), targetPoint];
+      } else {
+        state.waypoints = [targetPoint];
+      }
+      state.bestDistance = Infinity;
+      state.stuckTime = 0;
+    };
+
+    const steerWanderer = (state: (typeof wanderStates)[number], goal: THREE.Vector3, dt: number) => {
+      const desired = goal.clone().sub(state.position); desired.y = 0;
+      if (desired.lengthSq() < 0.01) return false;
+      desired.normalize();
+      const step = (state.id === "wukong" ? 33 : state.id === "bajie" ? 25 : 28) * dt;
+      for (const angle of [0, 0.48, -0.48, 0.95, -0.95, 1.45, -1.45, Math.PI]) {
+        const direction = desired.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        if (!canWanderStep(state.position, direction, step)) continue;
+        state.position.addScaledVector(direction, step);
+        state.yaw = Math.atan2(direction.x, direction.z);
+        state.moving = true;
+        return true;
+      }
+      state.moving = false;
+      return false;
+    };
+
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
@@ -697,7 +769,7 @@ export default function ChanganGame() {
         if (currentMode === "panoramic") {
           speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 360 : 120;
         } else if (currentMode === "fly") {
-          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 150 : 70;
+          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 520 : 220;
         } else {
           const guardianBoost = activePilgrimRef.current === "wujing" ? 1.28 : 1;
           speed = (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 150 : 50) * guardianBoost;
@@ -714,7 +786,7 @@ export default function ChanganGame() {
           movement.normalize().multiplyScalar(speed * dt);
           leaderPosition.add(movement);
           leaderPosition.x = THREE.MathUtils.clamp(leaderPosition.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX);
-          leaderPosition.y = THREE.MathUtils.clamp(leaderPosition.y, 12, 1500);
+          leaderPosition.y = Math.max(12, leaderPosition.y);
           leaderPosition.z = THREE.MathUtils.clamp(leaderPosition.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ);
           leaderYaw = Math.atan2(movement.x, movement.z);
         } else {
@@ -777,6 +849,63 @@ export default function ChanganGame() {
           setNearArtifact(isNear);
         }
       }
+
+      if (previousActivePilgrim !== activePilgrimRef.current) {
+        const formerLeader = wanderStates.find((state) => state.id === previousActivePilgrim);
+        if (formerLeader) {
+          formerLeader.position.set(leaderPosition.x, 0, leaderPosition.z);
+          formerLeader.breadcrumbs = [formerLeader.position.clone()];
+          formerLeader.escapePath = [];
+          formerLeader.waypoints = [];
+        }
+        previousActivePilgrim = activePilgrimRef.current;
+      }
+
+      const freePoses: Partial<Record<PilgrimId, PartyPose>> = {};
+      if (partyModeRef.current === "explore" && resolvedPositionsRef.current.length === ARTIFACTS.length) {
+        wanderStates.forEach((state, index) => {
+          if (state.id === activePilgrimRef.current) return;
+          if (state.escapePath.length) {
+            if (state.position.distanceTo(state.escapePath[0]) < 5) state.escapePath.shift();
+            if (state.escapePath.length) steerWanderer(state, state.escapePath[0], dt);
+            else { state.waypoints = []; state.bestDistance = Infinity; state.stuckTime = 0; }
+          } else {
+            if (!state.waypoints.length) buildWanderRoute(state);
+            const waypoint = state.waypoints[0];
+            if (waypoint && state.position.distanceTo(waypoint) < 9) {
+              state.waypoints.shift();
+              state.bestDistance = Infinity;
+              state.stuckTime = 0;
+              if (!state.waypoints.length) {
+                state.target = (state.target + 4 + index) % ARTIFACTS.length;
+                buildWanderRoute(state);
+              }
+            }
+            const goal = state.waypoints[0];
+            if (goal) {
+              const distance = state.position.distanceTo(goal);
+              if (distance < state.bestDistance - 3) { state.bestDistance = distance; state.stuckTime = Math.max(0, state.stuckTime - dt * 2); }
+              else state.stuckTime += dt;
+              const moved = steerWanderer(state, goal, dt);
+              if (!moved) state.stuckTime += dt * 2.5;
+              if (state.stuckTime > 2.8) {
+                state.escapePath = state.breadcrumbs.slice(0, -1).slice(-7).reverse().map((point) => point.clone());
+                if (!state.escapePath.length) state.escapePath = [new THREE.Vector3(0, 0, Math.min(1400, state.position.z + 90))];
+                state.waypoints = [];
+                state.stuckTime = 0;
+              }
+            }
+          }
+          state.breadcrumbTimer += dt;
+          if (state.breadcrumbTimer > 0.9) {
+            state.breadcrumbTimer = 0;
+            const last = state.breadcrumbs[state.breadcrumbs.length - 1];
+            if (state.position.distanceTo(last) > 7) state.breadcrumbs.push(state.position.clone());
+            if (state.breadcrumbs.length > 40) state.breadcrumbs.shift();
+          }
+          freePoses[state.id] = { position: state.position, yaw: state.yaw, moving: state.moving };
+        });
+      }
       artifactMarkers.forEach((marker, index) => {
         const position = resolvedPositionsRef.current[index];
         if (position && (marker.position.x !== position[0] || marker.position.z !== position[1])) {
@@ -789,7 +918,7 @@ export default function ChanganGame() {
         marker.scale.setScalar(pulse);
         marker.children[1].position.y = 7 + Math.sin(clock.elapsedTime * 1.8) * 1.2;
       });
-      xiyouWorld.updateParty(clock.elapsedTime, dt, activePilgrimRef.current, leaderPosition, leaderYaw, (currentMode === "walk" || currentMode === "fly") && movement.lengthSq() > 0, partyModeRef.current);
+      xiyouWorld.updateParty(clock.elapsedTime, dt, activePilgrimRef.current, leaderPosition, leaderYaw, (currentMode === "walk" || currentMode === "fly") && movement.lengthSq() > 0, partyModeRef.current, freePoses, currentMode === "fly");
       renderer.render(scene, camera);
     };
     animate();
@@ -834,6 +963,8 @@ export default function ChanganGame() {
 
   const enterGame = () => {
     if (!ready) return;
+    startedRef.current = true;
+    briefOpenRef.current = true;
     setStarted(true);
     setBriefOpen(true);
     requestPointerLockSafely();
@@ -937,7 +1068,7 @@ export default function ChanganGame() {
             <p className="act-copy">{act.copy}</p>
             {activeArtifact < ARTIFACTS.length ? <>
               <p className="quest-place">{activeAnchor?.location ?? "长安城中"} · {activeAnchor?.region}</p>
-              <h2>{ARTIFACTS[activeArtifact].chineseTitle.replace(/./g, "□")}</h2>
+              <h2>待鉴定唐珍</h2>
               <p>{ARTIFACTS[activeArtifact].fieldNote}</p>
               <div className="quest-distance"><i /> {trailReading}</div>
             </> : <>
@@ -1021,12 +1152,12 @@ export default function ChanganGame() {
 
       {briefOpen && <section className="mission-letter modal-layer" role="dialog" aria-modal="true" aria-labelledby="mission-title">
         <div className="letter-paper">
-          <button className="modal-close" type="button" aria-label="关闭任务说明" onClick={() => { setBriefOpen(false); requestPointerLockSafely(); }}>×</button>
+          <button className="modal-close" type="button" aria-label="关闭任务说明" onClick={() => { briefOpenRef.current = false; setBriefOpen(false); requestPointerLockSafely(); }}>×</button>
           <p className="letter-mark">大唐敕令</p><span className="letter-index">西行异闻 · 第一卷</span>
           <h2 id="mission-title">长安十二珍</h2>
           <p>西行前夜，十二件唐珍的灵影散落坊市。若不在晨钟前归位，月洞门将永远闭合。玄奘师徒受命分头循迹，让文物记忆随取经人传向远方。</p>
           <ol><li><b>切换领队：</b>四人能力会真实改变寻路、移动或鉴定</li><li><b>三幕寻宝：</b>双塔受诏、莲池照影、月门归藏，每幕四珍</li><li><b>安全藏点：</b>宝物只落在可抵达的路边与空地，靠近按 <kbd>E</kbd></li></ol>
-          <button className="letter-action" type="button" onClick={() => { setBriefOpen(false); requestPointerLockSafely(); }}>四圣同游 · 启程</button>
+          <button className="letter-action" type="button" onClick={() => { briefOpenRef.current = false; setBriefOpen(false); requestPointerLockSafely(); }}><kbd>Space</kbd> 四圣同游 · 启程</button>
         </div>
       </section>}
 

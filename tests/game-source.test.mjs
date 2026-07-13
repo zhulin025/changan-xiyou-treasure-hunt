@@ -12,6 +12,13 @@ test("ships the complete Journey to the West treasure hunt", async () => {
   assert.match(source, /mobileHudOpen/);
   assert.match(source, /currentMode === "walk" \|\| currentMode === "fly"/);
   assert.match(source, /targetRot\.set\(-1\.15, chaseYaw/);
+  assert.match(source, /useState<"follow" \| "explore">\("explore"\)/);
+  assert.match(source, /event\.code === "Space"/);
+  assert.match(source, /待鉴定唐珍/);
+  assert.match(source, /wanderStates/);
+  assert.match(source, /buildWanderRoute/);
+  assert.match(source, /escapePath/);
+  assert.match(source, /leaderPosition\.y = Math\.max\(12/);
   assert.match(source, /changan-artifact-progress/);
   assert.match(source, /唐代博物志/);
   await Promise.all([
@@ -28,4 +35,6 @@ test("ships four procedural pilgrims and themed landmarks", async () => {
   assert.match(source, /createLotusCourt/);
   assert.match(source, /createMoonGate/);
   assert.match(source, /updateParty/);
+  assert.match(source, /leaderFlying \? -Math\.PI \/ 2 : 0/);
+  assert.match(source, /if \(leaderFlying\) slot\.y = 0/);
 });

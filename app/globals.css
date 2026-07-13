@@ -50,7 +50,7 @@ button { font: inherit; }
 .entry-rule { display: flex; align-items: center; gap: 14px; color: #d5b77b; font-size: 11px; letter-spacing: .45em; }
 .entry-rule::before { content: ""; width: 46px; height: 1px; background: #d5b77b; }
 .entry-kicker { margin: 40px 0 8px; font-size: 13px; letter-spacing: .3em; color: #d9c7a4; }
-.entry h2 { margin: 0 0 28px; font-size: clamp(64px, 8vw, 104px); font-weight: 500; letter-spacing: .12em; line-height: 1; }
+.entry h2 { margin: 0 0 28px; font-size: clamp(58px, 7vw, 88px); font-weight: 500; letter-spacing: .06em; line-height: 1; white-space: nowrap; }
 .entry-copy { margin: 0 0 38px; color: #e8ddc8; font-size: 14px; line-height: 2; letter-spacing: .08em; }
 .enter-button {
   position: relative; display: flex; justify-content: space-between; align-items: center; width: 250px; height: 56px;
@@ -197,7 +197,7 @@ kbd { min-width: 19px; padding: 3px 5px; border: 1px solid #e3c78b66; border-rad
 @media (max-width: 760px) {
   .masthead { top: 20px; left: 20px; }
   .entry { left: 28px; transform: translateY(-43%); }
-  .entry h2 { font-size: 66px; }
+  .entry h2 { font-size: clamp(46px, 15vw, 66px); }
   .hud-left { top: 24px; left: auto; right: 18px; transform: none; }
   .hud-right, .control-hint { display: none; }
   .touch-pad { display: block; }

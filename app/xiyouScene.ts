@@ -1,12 +1,13 @@
 import * as THREE from "three";
 
 export type PilgrimId = "xuanzang" | "wukong" | "bajie" | "wujing";
+export type PartyPose = { position: THREE.Vector3; yaw: number; moving: boolean };
 
 export type XiyouWorld = {
   root: THREE.Group;
   pilgrims: Record<PilgrimId, THREE.Group>;
   forbiddenZones: { x: number; z: number; radius: number }[];
-  updateParty: (elapsed: number, dt: number, active: PilgrimId, leaderPosition: THREE.Vector3, leaderYaw: number, moving: boolean, mode: "follow" | "explore") => void;
+  updateParty: (elapsed: number, dt: number, active: PilgrimId, leaderPosition: THREE.Vector3, leaderYaw: number, moving: boolean, mode: "follow" | "explore", freePoses?: Partial<Record<PilgrimId, PartyPose>>, leaderFlying?: boolean) => void;
 };
 
 const palette = {
@@ -180,15 +181,24 @@ export function createXiyouWorld(): XiyouWorld {
   ];
   return {
     root, pilgrims, forbiddenZones,
-    updateParty(elapsed, dt, active, leaderPosition, leaderYaw, moving, mode) {
+    updateParty(elapsed, dt, active, leaderPosition, leaderYaw, moving, mode, freePoses, leaderFlying = false) {
       const leader = pilgrims[active];
       leader.position.lerp(leaderPosition, 1 - Math.exp(-dt * 18));
       leader.rotation.y = THREE.MathUtils.lerp(leader.rotation.y, leaderYaw, 1 - Math.exp(-dt * 15));
+      const leaderRuntime = leader.userData.runtime as { arms: THREE.Group[]; legs: THREE.Group[]; body: THREE.Group };
+      leaderRuntime.body.rotation.x = THREE.MathUtils.lerp(leaderRuntime.body.rotation.x, leaderFlying ? -Math.PI / 2 : 0, 1 - Math.exp(-dt * 6));
       const followers = ids.filter((id) => id !== active);
       const localSlots = [new THREE.Vector3(-4.2, 0, 5.3), new THREE.Vector3(4.2, 0, 5.3), new THREE.Vector3(0, 0, 9.2)];
       followers.forEach((id, index) => {
         const pilgrim = pilgrims[id];
+        const freePose = mode === "explore" ? freePoses?.[id] : undefined;
+        if (freePose) {
+          pilgrim.position.lerp(freePose.position, 1 - Math.exp(-dt * 10));
+          pilgrim.rotation.y = THREE.MathUtils.lerp(pilgrim.rotation.y, freePose.yaw, 1 - Math.exp(-dt * 9));
+          return;
+        }
         const slot = localSlots[index].clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), leaderYaw).add(leaderPosition);
+        if (leaderFlying) slot.y = 0;
         if (!moving) {
           const roam = mode === "explore" ? 7.5 + index * 1.4 : 1.2 + index * 0.35;
           slot.x += Math.sin(elapsed * (0.23 + index * 0.025) + index * 2.3) * roam;
@@ -204,7 +214,7 @@ export function createXiyouWorld(): XiyouWorld {
       ids.forEach((id, index) => {
         const pilgrim = pilgrims[id];
         const runtime = pilgrim.userData.runtime as { arms: THREE.Group[]; legs: THREE.Group[]; body: THREE.Group };
-        const isWalking = id === active ? moving : pilgrim.position.distanceTo(leaderPosition) > 4;
+        const isWalking = id === active ? moving : mode === "explore" && freePoses?.[id] ? Boolean(freePoses[id]?.moving) : pilgrim.position.distanceTo(leaderPosition) > 4;
         const stride = isWalking ? Math.sin(elapsed * 7.5 + index) * 0.48 : 0;
         runtime.body.position.y = Math.abs(Math.sin(elapsed * (isWalking ? 7.5 : 1.7) + index)) * (isWalking ? 0.12 : 0.04);
         runtime.legs.forEach((leg, legIndex) => { leg.rotation.x = stride * (legIndex ? -1 : 1); });
