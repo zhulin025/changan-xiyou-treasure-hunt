@@ -186,7 +186,7 @@ export function createXiyouWorld(): XiyouWorld {
       leader.position.lerp(leaderPosition, 1 - Math.exp(-dt * 18));
       leader.rotation.y = THREE.MathUtils.lerp(leader.rotation.y, leaderYaw, 1 - Math.exp(-dt * 15));
       const leaderRuntime = leader.userData.runtime as { arms: THREE.Group[]; legs: THREE.Group[]; body: THREE.Group };
-      leaderRuntime.body.rotation.x = THREE.MathUtils.lerp(leaderRuntime.body.rotation.x, leaderFlying ? -Math.PI / 2 : 0, 1 - Math.exp(-dt * 6));
+      leaderRuntime.body.rotation.x = THREE.MathUtils.lerp(leaderRuntime.body.rotation.x, 0, 1 - Math.exp(-dt * 6));
       const followers = ids.filter((id) => id !== active);
       const localSlots = [new THREE.Vector3(-4.2, 0, 5.3), new THREE.Vector3(4.2, 0, 5.3), new THREE.Vector3(0, 0, 9.2)];
       followers.forEach((id, index) => {

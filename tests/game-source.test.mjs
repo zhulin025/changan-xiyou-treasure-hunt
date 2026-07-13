@@ -35,6 +35,6 @@ test("ships four procedural pilgrims and themed landmarks", async () => {
   assert.match(source, /createLotusCourt/);
   assert.match(source, /createMoonGate/);
   assert.match(source, /updateParty/);
-  assert.match(source, /leaderFlying \? -Math\.PI \/ 2 : 0/);
+  assert.doesNotMatch(source, /leaderFlying \? -Math\.PI \/ 2 : 0/);
   assert.match(source, /if \(leaderFlying\) slot\.y = 0/);
 });
