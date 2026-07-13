@@ -364,7 +364,7 @@ export default function ChanganGame() {
         targetPos.set(leaderPosition.x, 10, leaderPosition.z + chaseDistance);
         targetRot.set(-0.2, chaseYaw, 0, "YXZ");
       } else if (newMode === "fly") {
-        leaderPosition.y = Math.max(leaderPosition.y, 28);
+        leaderPosition.y = Math.max(leaderPosition.y, 80);
         targetPos.set(leaderPosition.x, leaderPosition.y + 10, leaderPosition.z + chaseDistance);
         targetRot.set(-0.2, chaseYaw, 0, "YXZ");
       }
@@ -574,6 +574,17 @@ export default function ChanganGame() {
         if (lockRequest && "catch" in lockRequest) lockRequest.catch(() => {});
         return;
       }
+      if (viewModeRef.current === "fly" && event.code === "Space" && !event.repeat) {
+        leaderPosition.y += 120;
+      }
+      if (viewModeRef.current === "fly" && event.code === "PageUp") {
+        event.preventDefault();
+        leaderPosition.y += 120;
+      }
+      if (viewModeRef.current === "fly" && event.code === "PageDown") {
+        event.preventDefault();
+        leaderPosition.y = Math.max(12, leaderPosition.y - 120);
+      }
       if (event.code === "KeyV") {
         if (viewModeRef.current === "panoramic") {
           changeViewMode("walk");
@@ -626,8 +637,12 @@ export default function ChanganGame() {
     };
     const onPointerUp = () => { panoramaDragging = false; };
     const onWheel = (event: WheelEvent) => {
-      if (viewModeRef.current === "walk" || viewModeRef.current === "fly") {
+      if (viewModeRef.current === "walk") {
         chaseDistance = THREE.MathUtils.clamp(chaseDistance + event.deltaY * 0.012, 10, 28);
+        return;
+      }
+      if (viewModeRef.current === "fly") {
+        leaderPosition.y = Math.max(12, leaderPosition.y - event.deltaY * 1.5);
         return;
       }
       if (viewModeRef.current !== "panoramic") return;
@@ -1125,7 +1140,8 @@ export default function ChanganGame() {
             {viewMode === "walk" && <><span><kbd>鼠标</kbd> 环绕镜头</span><span><kbd>R</kbd> 跟随 / 探索</span><span><kbd>F</kbd> 飞天 | <kbd>V</kbd> 全景</span></>}
             {viewMode === "fly" && (
               <>
-                <span><kbd>Space</kbd> 升 | <kbd>C</kbd> 降</span>
+                <span><kbd>Space</kbd><kbd>PageUp</kbd> 升 | <kbd>C</kbd><kbd>PageDown</kbd> 降</span>
+                <span><kbd>滚轮</kbd> 直接调高度</span>
                 <span><kbd>F</kbd> 落地 | <kbd>V</kbd> 全景</span>
               </>
             )}

@@ -23,6 +23,10 @@ test("ships the complete Journey to the West treasure hunt", async () => {
   assert.match(source, /addEventListener\("pointerdown", onPointerDown\)/);
   assert.match(source, /verticalSpeed.*1200 : 520/);
   assert.doesNotMatch(source, /clamp\(leaderPosition\.y, 12,/);
+  assert.match(source, /leaderPosition\.y \+= 120/);
+  assert.match(source, /event\.code === "PageUp"/);
+  assert.match(source, /leaderPosition\.y - event\.deltaY \* 1\.5/);
+  assert.doesNotMatch(source, /Math\.max\(leaderPosition\.y, 28\)/);
   assert.match(source, /changan-artifact-progress/);
   assert.match(source, /唐代博物志/);
   await Promise.all([
