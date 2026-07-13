@@ -241,7 +241,6 @@ export default function ChanganGame() {
   const activeArtifactRef = useRef(0);
   const nearArtifactRef = useRef(false);
   const openInspectionRef = useRef<(() => void) | null>(null);
-  const pointerLockCooldownUntilRef = useRef(0);
   const placementIndicesRef = useRef(placementIndices);
   const runSeedRef = useRef(runSeed);
   const activePilgrimRef = useRef<PilgrimId>("wukong");
@@ -342,6 +341,9 @@ export default function ChanganGame() {
     let chaseYaw = 0;
     let chasePitch = 0.28;
     let chaseDistance = 18;
+    let panoramaDragging = false;
+    let panoramaPointerX = 0;
+    let panoramaPointerY = 0;
 
     const changeViewMode = (newMode: "walk" | "fly" | "panoramic") => {
       if (transitionRef.active) return;
@@ -598,7 +600,16 @@ export default function ChanganGame() {
     const onKeyUp = (event: KeyboardEvent) => keys.delete(event.code);
     const onBlur = () => keys.clear();
     const onMouseMove = (event: MouseEvent) => {
-      if (document.pointerLockElement !== renderer.domElement) return;
+      if (document.pointerLockElement !== renderer.domElement) {
+        if (viewModeRef.current !== "panoramic" || !panoramaDragging) return;
+        const deltaX = event.clientX - panoramaPointerX;
+        const deltaY = event.clientY - panoramaPointerY;
+        panoramaPointerX = event.clientX;
+        panoramaPointerY = event.clientY;
+        camera.rotation.y -= deltaX * 0.005;
+        camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x - deltaY * 0.004, -1.5, -0.25);
+        return;
+      }
       if (viewModeRef.current === "walk" || viewModeRef.current === "fly") {
         chaseYaw -= event.movementX * 0.0024;
         chasePitch = THREE.MathUtils.clamp(chasePitch + event.movementY * 0.0018, 0.12, 0.62);
@@ -607,6 +618,13 @@ export default function ChanganGame() {
         camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x - event.movementY * 0.0015, -1.5, -0.25);
       }
     };
+    const onPointerDown = (event: PointerEvent) => {
+      if (viewModeRef.current !== "panoramic") return;
+      panoramaDragging = true;
+      panoramaPointerX = event.clientX;
+      panoramaPointerY = event.clientY;
+    };
+    const onPointerUp = () => { panoramaDragging = false; };
     const onWheel = (event: WheelEvent) => {
       if (viewModeRef.current === "walk" || viewModeRef.current === "fly") {
         chaseDistance = THREE.MathUtils.clamp(chaseDistance + event.deltaY * 0.012, 10, 28);
@@ -615,16 +633,13 @@ export default function ChanganGame() {
       if (viewModeRef.current !== "panoramic") return;
       camera.position.y = THREE.MathUtils.clamp(
         camera.position.y + event.deltaY * 1.5,
-        150,
-        3000
+        80,
+        6000
       );
     };
     const onPointerLock = () => {
       const isLocked = document.pointerLockElement === renderer.domElement;
       setLocked(isLocked);
-      if (!isLocked) {
-        pointerLockCooldownUntilRef.current = performance.now() + 750;
-      }
     };
     const onResize = () => {
       if (!mount) return;
@@ -638,6 +653,8 @@ export default function ChanganGame() {
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
     window.addEventListener("mousemove", onMouseMove);
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("wheel", onWheel, { passive: true });
     window.addEventListener("resize", onResize);
     document.addEventListener("pointerlockchange", onPointerLock);
@@ -728,6 +745,7 @@ export default function ChanganGame() {
       }
 
       const currentMode = viewModeRef.current;
+      let flightVertical = 0;
 
       if (currentMode === "fly") {
         if (keys.has("ArrowLeft") || keys.has("KeyQ")) camera.rotation.y += dt * 1.25;
@@ -752,8 +770,8 @@ export default function ChanganGame() {
         if (keys.has("KeyA")) movement.sub(right);
         if (keys.has("KeyD")) movement.add(right);
 
-        if (keys.has("Space")) movement.y += 1;
-        if (keys.has("KeyC")) movement.y -= 1;
+        if (keys.has("Space")) flightVertical += 1;
+        if (keys.has("KeyC")) flightVertical -= 1;
       } else {
         forward.set(-Math.sin(chaseYaw), 0, -Math.cos(chaseYaw));
         right.crossVectors(forward, camera.up).normalize();
@@ -767,9 +785,9 @@ export default function ChanganGame() {
       if (movement.lengthSq() > 0) {
         let speed = 18;
         if (currentMode === "panoramic") {
-          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 360 : 120;
+          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1200 : 520;
         } else if (currentMode === "fly") {
-          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 520 : 220;
+          speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 700 : 320;
         } else {
           const guardianBoost = activePilgrimRef.current === "wujing" ? 1.28 : 1;
           speed = (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 150 : 50) * guardianBoost;
@@ -778,10 +796,10 @@ export default function ChanganGame() {
         if (currentMode === "panoramic") {
           movement.normalize().multiplyScalar(speed * dt);
           camera.position.add(movement);
-          camera.position.x = THREE.MathUtils.clamp(camera.position.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX);
-          camera.position.z = THREE.MathUtils.clamp(camera.position.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ);
+          camera.position.x = THREE.MathUtils.clamp(camera.position.x, -5000, 5000);
+          camera.position.z = THREE.MathUtils.clamp(camera.position.z, -5000, 5000);
           
-          camera.position.y = THREE.MathUtils.clamp(camera.position.y, 150, 3000);
+          camera.position.y = THREE.MathUtils.clamp(camera.position.y, 80, 6000);
         } else if (currentMode === "fly") {
           movement.normalize().multiplyScalar(speed * dt);
           leaderPosition.add(movement);
@@ -798,6 +816,10 @@ export default function ChanganGame() {
             leaderYaw = Math.atan2(movement.x, movement.z);
           }
         }
+      }
+      if (currentMode === "fly" && flightVertical !== 0) {
+        const verticalSpeed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1200 : 520;
+        leaderPosition.y = Math.max(12, leaderPosition.y + flightVertical * verticalSpeed * dt);
       }
 
       if (currentMode === "walk" || currentMode === "fly") {
@@ -827,7 +849,7 @@ export default function ChanganGame() {
         const direction = degrees < 45 || degrees >= 315 ? "北" : degrees < 135 ? "西" : degrees < 225 ? "南" : "东";
         if (compassRef.current) compassRef.current.textContent = `${direction} · ${Math.round(degrees)}°`;
         const trackedPosition = currentMode === "walk" || currentMode === "fly" ? leaderPosition : camera.position;
-        if (coordsRef.current) coordsRef.current.textContent = `坊位 ${Math.round(trackedPosition.x)}, ${Math.round(-trackedPosition.z)}`;
+        if (coordsRef.current) coordsRef.current.textContent = `坊位 ${Math.round(trackedPosition.x)}, ${Math.round(-trackedPosition.z)} · 高度 ${Math.round(trackedPosition.y)}`;
         const target = resolvedPositionsRef.current[activeArtifactRef.current];
         if (target) {
           const dx = target[0] - trackedPosition.x;
@@ -929,6 +951,8 @@ export default function ChanganGame() {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("mousemove", onMouseMove);
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("wheel", onWheel);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("pointerlockchange", onPointerLock);
@@ -951,8 +975,6 @@ export default function ChanganGame() {
   const requestPointerLockSafely = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || document.pointerLockElement === canvas) return;
-    if (performance.now() < pointerLockCooldownUntilRef.current) return;
-
     const lockRequest = canvas.requestPointerLock?.();
     if (lockRequest && "catch" in lockRequest) {
       lockRequest.catch(() => {
@@ -1036,21 +1058,21 @@ export default function ChanganGame() {
               <button
                 type="button"
                 className={viewMode === "walk" ? "active-mode" : ""}
-                onClick={() => changeViewModeRef.current?.("walk")}
+                onClick={(event) => { event.currentTarget.blur(); changeViewModeRef.current?.("walk"); requestPointerLockSafely(); }}
               >
                 🎥 跟随
               </button>
               <button
                 type="button"
                 className={viewMode === "fly" ? "active-mode" : ""}
-                onClick={() => changeViewModeRef.current?.("fly")}
+                onClick={(event) => { event.currentTarget.blur(); changeViewModeRef.current?.("fly"); requestPointerLockSafely(); }}
               >
                 🦅 飞行
               </button>
               <button
                 type="button"
                 className={viewMode === "panoramic" ? "active-mode" : ""}
-                onClick={() => changeViewModeRef.current?.("panoramic")}
+                onClick={(event) => { event.currentTarget.blur(); changeViewModeRef.current?.("panoramic"); requestPointerLockSafely(); }}
               >
                 🗺️ 全景
               </button>

@@ -19,6 +19,10 @@ test("ships the complete Journey to the West treasure hunt", async () => {
   assert.match(source, /buildWanderRoute/);
   assert.match(source, /escapePath/);
   assert.match(source, /leaderPosition\.y = Math\.max\(12/);
+  assert.match(source, /panoramaDragging/);
+  assert.match(source, /addEventListener\("pointerdown", onPointerDown\)/);
+  assert.match(source, /verticalSpeed.*1200 : 520/);
+  assert.doesNotMatch(source, /clamp\(leaderPosition\.y, 12,/);
   assert.match(source, /changan-artifact-progress/);
   assert.match(source, /唐代博物志/);
   await Promise.all([
